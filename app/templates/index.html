@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fingerprint Analysis System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --secondary: #a855f7;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .upload-area {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 1rem;
+            padding: 3rem 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.3s;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #results {
+            margin-top: 2rem;
+            text-align: left;
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .result-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .result-value {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .loader {
+            display: none;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 1rem auto;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Fingerprint Analysis</h1>
+        <p>AI-powered biometric attribute extraction</p>
+        
+        <form id="uploadForm">
+            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                <img src="https://img.icons8.com/isometric/100/fingerprint.png" width="60" alt="fingerprint">
+                <div id="fileStatus" style="margin-top: 1rem;">Click to upload fingerprint image</div>
+                <input type="file" id="fileInput" name="file" accept="image/*" onchange="updateFileName()">
+            </div>
+            <button type="submit" class="btn" id="submitBtn">Analyze Fingerprint</button>
+        </form>
+
+        <div class="loader" id="loader"></div>
+
+        <div id="results">
+            <h3 style="margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">Analysis Results</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        function updateFileName() {
+            const input = document.getElementById('fileInput');
+            const status = document.getElementById('fileStatus');
+            if (input.files.length > 0) {
+                status.textContent = 'Selected: ' + input.files[0].name;
+                status.style.color = '#6366f1';
+            }
+        }
+
+        document.getElementById('uploadForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput.files.length === 0) {
+                alert('Please select a file');
+                return;
+            }
+
+            formData.append('file', fileInput.files[0]);
+
+            const submitBtn = document.getElementById('submitBtn');
+            const loader = document.getElementById('loader');
+            const resultsDiv = document.getElementById('results');
+            const resultContent = document.getElementById('resultContent');
+
+            submitBtn.disabled = true;
+            loader.style.display = 'block';
+            resultsDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    let html = '';
+                    const labels = {
+                        'blood_group': 'Blood Group',
+                        'sex': 'Sex',
+                        'age': 'Age Range',
+                        'diabetic_status': 'Diabetic Status'
+                    };
+
+                    for (const [key, label] of Object.entries(labels)) {
+                        html += `
+                            <div class="result-item">
+                                <span class="result-label">${label}</span>
+                                <span class="result-value">${data[key]}</span>
+                            </div>
+                        `;
+                    }
+                    resultContent.innerHTML = html;
+                    resultsDiv.style.display = 'block';
+                } else {
+                    alert('Error: ' + data.detail);
+                }
+            } catch (err) {
+                alert('Failed to connect to server');
+            } finally {
+                submitBtn.disabled = false;
+                loader.style.display = 'none';
+            }
+        };
+    </script>
+</body>
+</html>

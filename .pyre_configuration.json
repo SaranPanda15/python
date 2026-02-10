@@ -1,0 +1,8 @@
+{
+  "source_directories": ["."],
+  "search_path": [
+    "D:/python/.venv/Lib/site-packages"
+  ],
+  "python_version": "3.13.5",
+  "site_package_search_strategy": "all"
+}

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-multipart
+scikit-learn
+scikit-image
+opencv-python-headless
+numpy
+pandas
+jinja2
+python-magic
+joblib==1.5.3
