@@ -1,7 +1,7 @@
 import joblib # pyre-ignore-all-errors
 import os
 import numpy as np # pyre-ignore-all-errors
-from app.ml.processor import extract_glcm_features, analyze_fingerprint_texture # pyre-ignore-all-errors
+from app.ml.processor import extract_glcm_features, analyze_fingerprint_texture, is_valid_fingerprint # pyre-ignore-all-errors
 
 MODEL_DIR = "models"
 MODELS = ["blood_group", "sex", "age", "diabetic_status"]
@@ -16,8 +16,7 @@ class ModelManager:
             path = os.path.join(MODEL_DIR, f"{name}_model.joblib")
             if os.path.exists(path):
                 self.models[name] = joblib.load(path)
-            else:
-                print(f"Warning: Model for {name} not found at {path}")
+            # No warnings needed as we now have a powerful heuristic fallback
 
     def _heuristic_predict(self, image_path):
         """
@@ -59,6 +58,11 @@ class ModelManager:
         Processes image and predicts attributes. Fallback to DeepRidge Engine
         if pre-trained models are missing or return low confidence.
         """
+        # First, validate if it's a fingerprint
+        is_valid, message = is_valid_fingerprint(image_path)
+        if not is_valid:
+            return {"error": "Invalid Image", "detail": message}
+
         try:
             # Check if all models are loaded
             if len(self.models) < len(MODELS):

@@ -52,6 +52,13 @@ async def analyze_fingerprint(file: UploadFile = File(...)):
         # Perform analysis
         results = manager.predict(file_path)
         
+        # Check for validation errors from the engine
+        if "error" in results:
+            raise HTTPException(
+                status_code=422, 
+                detail=f"{results.get('error')}: {results.get('detail', 'The image does not appear to be a clear fingerprint.')}"
+            )
+        
         # Add original filename to results
         results["filename"] = file.filename
         

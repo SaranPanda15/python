@@ -80,6 +80,44 @@ def analyze_fingerprint_texture(image_path):
         "signature": signature
     }
 
+def is_valid_fingerprint(image_path):
+    """
+    Validates if the image contains a fingerprint pattern by checking 
+    structural stability under blurring (Texture vs Noise).
+    """
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        return False, "Could not read image"
+    
+    img = cv2.resize(image, (512, 512))
+    
+    # 1. Base Variance (reject blank/flat images)
+    var_orig = np.var(img)
+    if var_orig < 200: 
+        return False, "Image lacks sufficient detail or contrast"
+
+    # 2. Blur Stability Test (Fingerprints have low-freq structure, noise does not)
+    # When blurred, fingerprints retain their ridge structure (high variance)
+    # White noise averages out to gray (low variance)
+    blurred = cv2.GaussianBlur(img, (15, 15), 0)
+    var_blur = np.var(blurred)
+    ratio = var_blur / var_orig
+    
+    if ratio < 0.05:
+        return False, "Image appears to be noise or lacks biometric structure"
+
+    # 3. Ridge Frequency Validation
+    try:
+        texture = analyze_fingerprint_texture(image_path)
+        # Fingerprints should have a moderate number of transitions
+        # Too low = simple shapes, Too high = extreme noise
+        if texture["ridge_density"] < 0.05 or texture["ridge_density"] > 0.35:
+            return False, "Pattern does not match human fingerprint ridge density"
+    except:
+        return False, "Biometric analysis failed"
+
+    return True, "Valid fingerprint"
+
 if __name__ == "__main__":
     # Test with a dummy image if needed
     pass
