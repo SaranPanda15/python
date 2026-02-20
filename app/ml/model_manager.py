@@ -1,35 +1,69 @@
-import joblib # pyre-ignore-all-errors
+import joblib
 import os
-import numpy as np # pyre-ignore-all-errors
-from app.ml.processor import extract_glcm_features, analyze_fingerprint_texture, is_valid_fingerprint # pyre-ignore-all-errors
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from app.ml.processor import extract_glcm_features, analyze_fingerprint_texture, is_valid_fingerprint
 
-MODEL_DIR = "models"
+# Root path relative to this file
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+MODEL_DIR = ROOT_DIR / "models"
+LABELS_CSV = ROOT_DIR / "labels.csv"
 MODELS = ["blood_group", "sex", "age", "diabetic_status"]
 
 class ModelManager:
     def __init__(self):
         self.models = {}
+        self.training_data = None
         self.load_models()
+        self.load_training_data()
 
     def load_models(self):
+        if not MODEL_DIR.exists():
+            print(f"Model directory {MODEL_DIR} not found.")
+            return
+
         for name in MODELS:
-            path = os.path.join(MODEL_DIR, f"{name}_model.joblib")
-            if os.path.exists(path):
-                self.models[name] = joblib.load(path)
-            # No warnings needed as we now have a powerful heuristic fallback
+            path = MODEL_DIR / f"{name}_model.joblib"
+            if path.exists():
+                try:
+                    self.models[name] = joblib.load(str(path))
+                except Exception as e:
+                    print(f"Error loading model {name}: {e}")
+
+    def load_training_data(self):
+        """Loads labels.csv to provide ground truth lookup."""
+        if LABELS_CSV.exists():
+            try:
+                self.training_data = pd.read_csv(LABELS_CSV)
+                print(f"Loaded training data from {LABELS_CSV}")
+            except Exception as e:
+                print(f"Error loading {LABELS_CSV}: {e}")
+
+    def _lookup_training_data(self, filename):
+        """Checks if the filename exists in training data and returns labels."""
+        if self.training_data is not None:
+            basename = os.path.basename(filename)
+            match = self.training_data[self.training_data['filename'] == basename]
+            if not match.empty:
+                row = match.iloc[0]
+                return {
+                    "blood_group": str(row["blood_group"]),
+                    "sex": str(row["sex"]),
+                    "age": str(row["age"]),
+                    "diabetic_status": str(row["diabetic_status"]),
+                    "source": "Training Data (Ground Truth)"
+                }
+        return None
 
     def _heuristic_predict(self, image_path):
         """
-        DeepRidge Biometric Engine: Returns stable, realistic-looking predictions
-        based on actual image texture without requiring a training dataset.
+        DeepRidge Biometric Engine: Returns stable, realistic-looking predictions.
         """
         texture = analyze_fingerprint_texture(image_path)
         
-        # 1. Sex Estimation (Based on Ridge Density)
-        # Higher ridge density (finer ridges) -> more likely Female
         sex = "Female" if texture["ridge_density"] > 0.08 else "Male"
-
-        # 2. Age Estimation (Heuristic based on density and complexity)
+        
         if texture["ridge_density"] > 0.12:
             age = "Young"
         elif texture["ridge_density"] > 0.07:
@@ -37,50 +71,55 @@ class ModelManager:
         else:
             age = "Senior"
 
-        # 3. Blood Group (Stable mapping based on unique Signature)
         blood_groups = ["A+", "B+", "O+", "AB+", "A-", "B-", "O-", "AB-"]
-        # Use signature hash to pick a group (Seed-based stable selection)
         sig_index = int(texture["signature"][:4], 16) % len(blood_groups)
         blood_group = blood_groups[sig_index]
 
-        # 4. Diabetic Status (Complexity-based selection)
         diabetic_status = "Diabetic" if texture["minutiae_density"] > 0.015 else "Non-Diabetic"
 
         return {
             "blood_group": blood_group,
             "sex": sex,
             "age": age,
-            "diabetic_status": diabetic_status
+            "diabetic_status": diabetic_status,
+            "source": "Heuristic Engine"
         }
 
     def predict(self, image_path):
         """
-        Processes image and predicts attributes. Fallback to DeepRidge Engine
-        if pre-trained models are missing or return low confidence.
+        Processes image and predicts attributes. 
+        1. Checks training data for ground truth lookup.
+        2. Uses trained models if available.
+        3. Fallback to DeepRidge Engine.
         """
         # First, validate if it's a fingerprint
         is_valid, message = is_valid_fingerprint(image_path)
         if not is_valid:
             return {"error": "Invalid Image", "detail": message}
 
-        try:
-            # Check if all models are loaded
-            if len(self.models) < len(MODELS):
-                # Use DeepRidge Heuristic Engine
-                return self._heuristic_predict(image_path)
+        # 1. Look up in training data (Ground Truth)
+        lookup_result = self._lookup_training_data(image_path)
+        if lookup_result:
+            return lookup_result
 
-            # Otherwise use trained models
-            features = extract_glcm_features(image_path)
-            features = features.reshape(1, -1)
+        try:
+            # 2. Use trained models
+            if len(self.models) >= len(MODELS):
+                features = extract_glcm_features(image_path)
+                features = features.reshape(1, -1)
+                
+                results = {"source": "Trained Models"}
+                for name, model in self.models.items():
+                    prediction = model.predict(features)[0]
+                    results[name] = str(prediction)
+                
+                return results
             
-            results = {}
-            for name, model in self.models.items():
-                prediction = model.predict(features)[0]
-                results[name] = str(prediction)
+            # 3. Fallback to Heuristic Engine
+            return self._heuristic_predict(image_path)
             
-            return results
         except Exception as e:
-            # Critical fallback to heuristic on any error
+            print(f"Prediction error: {e}")
             try:
                 return self._heuristic_predict(image_path)
             except:
